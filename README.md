@@ -10,7 +10,7 @@ Currently working on ⭐️ [Workflow](https://github.com/sogou/workflow)✨ and
 🎼🎹💃 **bilibili**: [space.bilibili.com/bug1412](https://space.bilibili.com/268644447)
 
 [![Github stats](https://github-readme-stats.vercel.app/api?username=holmes1412&show_icons=true&include_all_commits=true&count_private=true)](https://github.com/holmes1412/github-readme-stats)
-[![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=holmes1412&layout=compact)](https://github.com/holmes1412/github-readme-stats)
+[![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=holmes1412&layout=compact&langs_count=10&count_private=true)](https://github.com/holmes1412/github-readme-stats)
 
 
 
