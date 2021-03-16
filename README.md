@@ -1,9 +1,9 @@
-### ♥️ 1412 🧸
+### ♥️ lovely 22 🧸
 
 Currently working on ⭐️ [Workflow](https://github.com/sogou/workflow)✨ and 🌟[SRPC](https://github.com/sogou/srpc)💫
 
 
-📜👩🏻‍💻💬 **Personal log**: [blog.litexavier.me](http://blog.litexavier.me)
+📜👩🏻‍💻💬 **Personal blog**: [blog.litexavier.me](http://blog.litexavier.me)
 
 📓📖📃 **Zhihu**: [www.zhihu.com/people/liyingxin1412](https://www.zhihu.com/people/liyingxin1412)
 
