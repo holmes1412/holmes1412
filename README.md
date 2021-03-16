@@ -11,7 +11,6 @@ Currently working on ⭐️ [Workflow](https://github.com/sogou/workflow)✨ and
 
 [![Github stats](https://github-readme-stats.vercel.app/api?username=holmes1412&show_icons=true&include_all_commits=true&count_private=true)](https://github.com/holmes1412/github-readme-stats)
 [![Top Langs](https://github-readme-stats.vercel.app/api/top-langs/?username=holmes1412&layout=compact)](https://github.com/holmes1412/github-readme-stats)
-![ReadMe Card](https://github-readme-stats.vercel.app/api/pin/?username=holmes1412&repo=holmes1412)
 
 <!--
 
