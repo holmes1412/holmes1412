@@ -14,7 +14,7 @@ Currently working on ⭐️ [Workflow](https://github.com/sogou/workflow)✨ and
 
 <img src="https://raw.githubusercontent.com/wiki/holmes1412/srpc/qrcode_for_gh_5cb45cf4ddfa_258.jpg" width = "200" height = "200" alt="1412_qrcode" align=center />
 
-Any suggestions or any questions, please get contact with me. You can also subscribe me on wechat blog above for further information.
+Any suggestions or any questions about our projects **Workflow** or **SRPC**, please get contact with me. You may also subscribe me on wechat blog above for further information.
 
 
 <!--
