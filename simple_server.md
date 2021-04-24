@@ -75,7 +75,7 @@ int main() {
 
 带着以上高吞吐的需求，我们来看看**Workflow**内部的实现是怎样的：
 
-// 此处有张图
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/workflow_network.png"  width = "719" height = "520" alt="workflow_network_hierachy" align=center />
 
 基于以上的架构，基于**Workflow**的server轻轻松松就可以达到几十万QPS，高吞吐、低成本、开发快，简直是居家旅行开发代码必备的良药。
 
