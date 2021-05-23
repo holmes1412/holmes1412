@@ -1,10 +1,10 @@
-# 为什么spider抓取是程序员基本技能？
+# 原来用C++写爬虫如此简单！
 
-### 一、什么是spider
+### 一、什么是爬虫
 
-**Spider抓取**，可以说是我们需要从互联网世界获取数据的最基本方法。以大家最常用的``HTTP``协议为例，抓取本质上是一个**URL**到一个**网页**的转换过程。而有了基本的抓取功能，再搭配上我们想要的规则和策略，这就是一个上至内容检索下至数据分析都可以实现的spider。
+**爬虫**，可以说是我们需要从互联网世界获取数据的最基本方法。以大家最常用的``HTTP``协议为例，爬虫的抓取本质上是一个**URL**到一个**网页**的转换过程。而有了基本的抓取功能，再搭配上我们想要的规则和策略，这就是一个上至内容检索下至数据分析都可以实现的抓取爬虫。
 
-继上一次介绍用**Workflow**可以10行C++代码写一个服务器，今天继续给大家用十几行C++代码来实现一个高性能spider客户端！！！
+继上一次介绍用**Workflow**可以10行C++代码写一个服务器，今天继续给大家用十几行C++代码来实现一个高性能抓取客户端！！！
 
 ```cpp
 //[spider.cc]
@@ -36,9 +36,9 @@ g++ -o spider spider.cc --std=c++11 -lworkflow -lssl -lcrypto -lpthread
 ```sh
 HTTP/1.1 200 OK
 ```
-同理，我们还可以通过其他api来获得抓取回来的其他http header和http body，一切内容都在这个``WFHttpTask``中。而因为Workflow是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，从根本上保证了我们的spider的高性能。
+同理，我们还可以通过其他api来获得抓取回来的其他http header和http body，一切内容都在这个``WFHttpTask``中。而因为Workflow是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，外加内部自带的连接服用，从根本上保证了我们的spider爬虫的高性能。
 
-接下来给大家详细讲解一下接口和原理～
+接下来给大家详细讲解一下原理～
 
 ### 二、如何做抓取
 
@@ -50,7 +50,7 @@ WFHttpTask *create_http_task(const std::string& url,
                              int redirect_max, int retry_max,
                              http_callback_t callback);
 ```
-第一个参数就是我们要抓取的URL。对应的，在一开始的示例中，我们的**redirect_max**是2次，而**retry_max**是3次。第四个参数是一个回调函数，示例中我们用了一个lambda，由于Workflow的任务都是异步的，因此我们处理抓取结果这件事情是被动通知我们的，就会调起这个回调函数，格式如下：
+第一个参数就是我们要抓取的**URL**。对应的，在一开始的示例中，我们的重定向次数**redirect_max**是2次，而重试次数**retry_max**是3次。第四个参数是一个回调函数，示例中我们用了一个lambda，由于Workflow的任务都是异步的，因此我们处理抓取结果这件事情是被动通知我们的，就会调起这个回调函数，格式如下：
 ```cpp
 using http_callback_t = std::function<void (WFHttpTask *)>;
 ```
@@ -60,53 +60,55 @@ using http_callback_t = std::function<void (WFHttpTask *)>;
 我们的网络交互无非是**请求-回复**，对应到spider上，在我们创建好了task之后，我们有一些时机是处理**请求**的，在``HTTP``协议里，就是在header里填好协议相关的事情，比如我们可以通过Connection来指定希望得到建立``HTTP``的**长连接**，以节省下次建立连接的耗时，那么我们可以把**Connection**设置为**Keep-Alive**。示例如下：
 ```cpp
 protocol::HttpRequest *req = task->get_req();
-req->add_header_pair("Accept", "*/*");
-req->add_header_pair("User-Agent", "Wget/1.14 (gnu-linux)");
 req->add_header_pair("Connection", "Keep-Alive");
 task->start();
 ```
-最后我们会把设置好**请求**的任务，通过``task->start();``发出。最开始的``spider.cc``示例中，有一个``pause();``语句，是因为我们的任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
+最后我们会把设置好请求的任务，通过``task->start();``发出。最开始的``spider.cc``示例中，有一个``pause();``语句，是因为我们的异步任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
 
 #### 3. 处理抓取结果
 
-文章开头的demo里，为了方便读者，回调函数是一个lambda。现在我们把这个回调函数独立拎出来看看：
+一个抓取结果，根据``HTTP``协议，会包含三部分：**消息行**、**消息头header**、**消息正文body**。如果我们想要获取body，可以这样：
 ```cpp
-void spider_callback(WFHttpTask *task)
-{
-    protocol::HttpRequest *req = task->get_req();
-    protocol::HttpResponse *resp = task->get_resp();
-    std::string name;
-    std::string value;
-
-    // 获取http回复中的header
-    protocol::HttpHeaderCursor req_cursor(req);
-    while (req_cursor.next(name, value))
-        fprintf(stderr, "%s: %s\r\n", name.c_str(), value.c_str());
-    fprintf(stderr, "\r\n");
-
-    // 获取http回复中的body
-    const void *body;
-    size_t body_len;
-    resp->get_parsed_body(&body, &body_len); 
-    fprintf(stderr, "%.*s", body_len, (char *)body);
-}
+const void *body;
+size_t body_len;
+task->get_resp()->get_parsed_body(&body, &body_len); 
 ```
-一个抓取结果，根据``HTTP``协议，会包含三部分：
-- 消息行(包括协议、状态码、状态码描述)
-- 消息头heaer
-- 消息正文body
 
-其中第一部分在``spider.cc``这个demo里已经展示，这里给大家看看如何获取header和body。
+### 三、高性能的保证
 
-header需要通过一个``HttpHeaderCursor``遍历获得，而body可以通过``get_parsed_body(const void **body, size_t *size)``拿到，这是一个零拷贝的接口，如果我们抓取后希望结果存下来，需要在这个回调函数退出前把内容拷走。
+我们使用C++来写爬虫，最香的就是可以利用其高性能。**Workflow**对高并发是如何保证的呢？其实就两点：
+- 纯异步；
+- 连接复用；
 
-### 三、解锁更多功能
+前者是对线程资源的重复利用、后者是对连接资源的充分利用，这些框架层级都为用户管理好了，充分减少开发者的心智负担。
 
-有了一个简单的抓取任务，我们还会有哪方面的需求呢，这里可以结合实际情况与大家分享：
+#### 1. 异步调度模式
+同步和异步的模式直接决定了我们的爬虫可以有多大的并发度。为什么呢？通过下图可以先看看同步框架发起三个抓取任务，线程模型是怎样的：
+
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/spider-sync-threads-model.png">
+
+网络延迟往往非常大，如果我们在同步等待任务回来的话，线程就会一直被占用。这时候我们需要看看异步框架是如何实现的：
+
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/spider-async-thread-model.png">
+
+如图所示，只要任务发出之后，线程即可做其他事情，我们传入了一个**回调函数**做异步通知，因此等任务的网络回复收完之后，再让线程执行这个回调函数即可拿到抓取的结果，期间多个任务并发出去的时候，线程是可以复用的，轻松达到几十万的QPS并发度。
+
+#### 2. 连接复用
+
+我们刚才有提到，只要我们建立了长连接，即可提高效率。为什么呢？因为框架对连接有复用。我们先来看看如果一个请求就建立一个连接，会是什么样的情况：
+
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/spider-traditional-connection-model.png">
+
+很显然，占用大量的连接是对系统资源的浪费，而且每次都要做connect以及close是非常耗时的，除了**TCP**常见的握手以外，许多应用层协议建立连接的过程也会相对复杂。但使用**Workflow**就不会有这样的烦恼，**Workflow**会在任务发出的时候自动查找当前可以复用的连接，如果没有才会自动创建，完全不需要开发者关心连接如何复用的细节：
+
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/spider-reuse-connection-model.png">
+
+#### 3. 解锁其他功能
+
+当然，除了以上的高性能以外，一个高性能的爬虫往往还有许多其他的需求，这里可以结合实际情况与大家分享：
 1. **并行**地抓取多个URL，并且在全部抓取回来后做一些分析；
 2. **按顺序**或者按指定速度抓取某个站点的内容，避免抓取过快被封禁；
-3. 抓取必须是**异步**的，以避免网络延迟高的情况下占用当前线程的问题；
-4. spider遇到**redirect**可以自动帮我做跳转，一步到位抓取到最终结果；
-5. 我们可以实现**代理服务器**帮他人抓取，而他人抓取的网页可以是``HTTPS``的;
+3. spider遇到**redirect**可以自动帮我做跳转，一步到位抓取到最终结果；
+4. 希望通过**proxy**抓取``HTTP``与``HTTPS``资源；
 
-以上这些需求，除了需要框架本身具有高性能以外，还要求框架对于抓取任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些``Workflow``都已经实现。如此快速就能实现一个功能丰富的高性能spider，赶紧点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)尝试一下吧！
+以上这些需求，要求框架对于抓取任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如此快速就能实现一个功能丰富的高性能spider，赶紧点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)尝试一下吧！
