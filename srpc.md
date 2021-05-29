@@ -75,7 +75,7 @@ int main()
 
 可以更清楚地看到刚才提及的各个层级，其中压缩层、序列化层、协议层其实是互相解耦打通的，在SRPC代码上实现得非常统一，横向增加任何一种压缩算法或IDL或协议都不需要也不应该改动现有的代码，才是一个精美的架构～
 
-我们一直在说生成代码，到底有什么用呢？图中可以得知，生成代码是衔接用户调用接口和框架代码的桥梁，这里以一个最简单的protobuf自定义协议为例：
+我们一直在说生成代码，到底有什么用呢？图中可以得知，生成代码是衔接用户调用接口和框架代码的桥梁，这里以一个最简单的protobuf自定义协议为例：``example.proto``
 
 ```cpp
 message EchoRequest
@@ -93,7 +93,14 @@ service ExamplePB
     rpc Echo(EchoRequest) returns (EchoResponse);
 };
 ```
-我们定义好了请求、回复、远程服务的函数名，接下来我们看看通过SRPC会生成出什么样的生成代码：
+我们定义好了请求、回复、远程服务的函数名，通过以下命令就可以生成出接口代码``example.srpc.h``：
+
+```sh
+protoc example.proto --cpp_out=./ --proto_path=./
+srpc_generator protobuf ./example.proto ./
+```
+
+我们一窥究竟，看看生成代码到底可以实现什么功能：
 
 ```cpp
 // SERVER代码
@@ -122,34 +129,57 @@ public:
 
 作为一个高性能RPC框架，SRPC生成的client代码中包括了：同步、半同步、异步接口，文章开头展示的是一个同步接口的做法。
 
-而server的接口就更简单了，作为一个服务端，我们要做的就是收到请求->处理逻辑->返回回复，而这个时候，框架已经把刚才提到的网络收发、解压缩、反序列化等都给做好了。一个完整的server示例如下
+而server的接口就更简单了，作为一个服务端，我们要做的就是``收到请求``->``处理逻辑``->``返回回复``，而这个时候，框架已经把刚才提到的网络收发、解压缩、反序列化等都给做好了，然后通过生成代码调用到用户实现的派生service类的函数逻辑中。
+
+由于一种协议定义了一种client/server，因此其实我们同样可以得到的server类型有第二部分提到过的若干种：SRPCServer/SRPCHttpServer/BRPCServer/TRPCServer/ThriftServer/...
+
+### 4. 一个完整的server例子
+
+最后我们用一个完整的server例子，来看一下用户调用接口的使用方式，以及如何跨协议使用HTTP作为client进行调用：
 
 ```cpp
-#include "xxxx.srpc.h" // include生成代码头文件
+#include <stdio.h>
+#include <signal.h>
+#include "example.srpc.h"  // include生成代码头文件
+
+using namespace srpc;
 
 class ExamplePBServiceImpl : public ::example::ExamplePB::Service
 {
 public:
     void Echo(::example::EchoRequest *request, ::example::EchoResponse *response,
               srpc::RPCContext *ctx) override
-    { /* 收到请求后要做的事情，并填好回复;*/ }  
+    {
+        response->set_message("OK");
+    }  
 };
 
 int main()
 {
-    // 1. 定义一个server
-    SRPCServer server;
+    // 1. 定义一个server，由于我们要和HTTP通信，因此我们定义SRPCHTTPServer
+    SRPCHTTPServer server;
 
     // 2. 定义一个service，并加到server中
     ExamplePBServiceImpl examplepb_impl;
     server.add_service(&examplepb_impl);
 
     // 3. 把server启动起来
-    server.start(PORT);
+    server.start(80);
     pause();
     server.stop();
     return 0;
 }
+```
+
+只要安装了srpc，linux下即可通过以下命令编译出可执行文件:
+
+```sh
+g++ -o server server.cc example.pb.cc -std=c++11 -lsrpc
+```
+
+接下来是激动人心的时刻了，我们用人手一个的``curl``来发起一个HTTP请求：
+```
+curl 127.0.0.1:8811/Example/Echo -H 'Content-Type: application/json' -d '{message:"Hello World"}'
 ```
 
 通过这篇文章，相信我们可以清晰地了解到RPC是什么接口长什么样，也可以通过与HTTP协议互通来理解协议层次，更重要的是可以知道具体纵向的每个层次及横向对比我们常见的每种使用模式都有哪些。如果小伙伴对更多功能感兴趣，也可以通过阅读SRPC源码进行进一步了解。
