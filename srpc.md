@@ -1,4 +1,4 @@
-# 用一个极简框架向你讲清楚RPC架构原理
+# 一文带你搞懂RPC架构
 
 **Remote Procedure Call**，是一个大家都不陌生的词，只要涉及到通信，必然需要某种网络协议。我们很可能用过HTTP，那么RPC又和HTTP有什么区别呢？RPC还有什么特点，常见的选型有哪些？今天我们用一个基于C++实现的开源项目SRPC，一文给你讲明白RPC的基本原理和层次架构。SRPC整体代码风格简洁、架构层次精巧，整体约1万行代码，非常适合用来学习RPC架构：https://github.com/sogou/srpc
 
@@ -179,7 +179,7 @@ g++ -o server server.cc example.pb.cc -std=c++11 -lsrpc
 
 接下来是激动人心的时刻了，我们用人手一个的``curl``来发起一个HTTP请求：
 ```
-curl 127.0.0.1:8811/Example/Echo -H 'Content-Type: application/json' -d '{message:"Hello World"}'
+curl 127.0.0.1:80/Example/Echo -H 'Content-Type: application/json' -d '{message:"Hello World"}'
 ```
 
 通过这篇文章，相信我们可以清晰地了解到RPC是什么接口长什么样，也可以通过与HTTP协议互通来理解协议层次，更重要的是可以知道具体纵向的每个层次及横向对比我们常见的每种使用模式都有哪些。如果小伙伴对更多功能感兴趣，也可以通过阅读SRPC源码进行进一步了解。
