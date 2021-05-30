@@ -4,9 +4,9 @@
 
 ### 1. RPC是什么
 
-RPC可以分为两部分：用户调用接口 + 具体网络协议。前者为开发者需要关心的，后者由框架来实现。
+RPC可以分为两部分：**用户调用接口** + **具体网络协议**。前者为开发者需要关心的，后者由框架来实现。
 
-举个例子，我们定义一个函数，我们希望函数如果输入为“Hello World”的话，输出给一个“OK”，那么这个函数是个本地调用。如果一个远程服务收到“Hello World”可以给我们返回一个“OK”，那么这是一个远程调用。我们会和服务约定好远程调用的函数名。因此，我们的用户接口就是：输入、输出、远程函数名，比如用SRPC开发的话，client端的代码会长这样：
+举个例子，我们定义一个函数，我们希望函数如果输入为“Hello World”的话，输出给一个“OK”，那么这个函数是个本地调用。如果一个远程服务收到“Hello World”可以给我们返回一个“OK”，那么这是一个远程调用。我们会和服务约定好远程调用的函数名。因此，我们的用户接口就是：**输入**、**输出**、**远程函数名**，比如用SRPC开发的话，client端的代码会长这样：
 
 ```cpp
 int main()
@@ -43,7 +43,7 @@ int main()
 
 ### 2. RPC有什么
 
-我们可以从SRPC的架构层次上来看，RPC框架有哪些层，以及SRPC目前所横向支持的功能是什么：
+我们可以借SRPC的架构，看一下RPC框架从用户到系统都有哪些层次，以及SRPC目前所横向支持的功能是什么：
 
 * **用户代码**（client的发送函数/server的函数实现）
 * **IDL序列化**（protobuf/thrift serialization）
@@ -78,6 +78,8 @@ int main()
 我们一直在说生成代码，到底有什么用呢？图中可以得知，生成代码是衔接用户调用接口和框架代码的桥梁，这里以一个最简单的protobuf自定义协议为例：``example.proto``
 
 ```cpp
+syntax = "proto2"; // 这里proto2和proto3都可以
+
 message EchoRequest
 {
     optional string message = 1;
@@ -100,7 +102,7 @@ protoc example.proto --cpp_out=./ --proto_path=./
 srpc_generator protobuf ./example.proto ./
 ```
 
-我们一窥究竟，看看生成代码到底可以实现什么功能：
+我们会发现，同时还会生成出``server.pb_skeleton.cc``和``client.pb_skeleton.cc``，这是为了方便开发者的两个空文件。我们继续一窥究竟，看看生成代码到底可以实现什么功能：
 
 ```cpp
 // SERVER代码
@@ -127,7 +129,7 @@ public:
 };
 ```
 
-作为一个高性能RPC框架，SRPC生成的client代码中包括了：同步、半同步、异步接口，文章开头展示的是一个同步接口的做法。
+作为一个高性能RPC框架，SRPC生成的client代码中包括了：**同步**、**半同步**、**异步接口**，文章开头展示的是一个同步接口的做法。
 
 而server的接口就更简单了，作为一个服务端，我们要做的就是``收到请求``->``处理逻辑``->``返回回复``，而这个时候，框架已经把刚才提到的网络收发、解压缩、反序列化等都给做好了，然后通过生成代码调用到用户实现的派生service类的函数逻辑中。
 
@@ -135,52 +137,57 @@ public:
 
 ### 4. 一个完整的server例子
 
-最后我们用一个完整的server例子，来看一下用户调用接口的使用方式，以及如何跨协议使用HTTP作为client进行调用：
+最后我们用一个完整的server例子，来看一下用户调用接口的使用方式，以及如何跨协议使用HTTP作为client进行调用。刚才提到，srpc_generator在生成接口的同时，也会自动生成空的用户代码，我们这里打开``server.pb_skeleton.cc``直接改两行，即可run起来：
 
 ```cpp
-#include <stdio.h>
-#include <signal.h>
-#include "example.srpc.h"  // include生成代码头文件
+#include "example.srpc.h"
+#include "workflow/WFFacilities.h"
 
 using namespace srpc;
+static WFFacilities::WaitGroup wait_group(1);
 
-class ExamplePBServiceImpl : public ::example::ExamplePB::Service
+void sig_handler(int signo)
+{
+    wait_group.done();
+}
+
+class ExampleServiceImpl : public Example::Service
 {
 public:
-    void Echo(::example::EchoRequest *request, ::example::EchoResponse *response,
-              srpc::RPCContext *ctx) override
+
+    void Echo(EchoRequest *request, EchoResponse *response, srpc::RPCContext *ctx) override
     {
-        response->set_message("OK");
-    }  
+        response->set_message("OK"); // 具体逻辑在这里添加，我们简单地回复一个OK
+    }
 };
 
 int main()
 {
-    // 1. 定义一个server，由于我们要和HTTP通信，因此我们定义SRPCHTTPServer
-    SRPCHTTPServer server;
+    unsigned short port = 80; // 因为要启动Http服务
+    SRPCHttpServer server; // 我们需要构造一个SRPCHttpServer
 
-    // 2. 定义一个service，并加到server中
-    ExamplePBServiceImpl examplepb_impl;
-    server.add_service(&examplepb_impl);
+    ExampleServiceImpl example_impl;
+    server.add_service(&example_impl);
 
-    // 3. 把server启动起来
-    server.start(80);
-    pause();
+    server.start(port);
+    wait_group.wait();
     server.stop();
     return 0;
 }
 ```
 
-只要安装了srpc，linux下即可通过以下命令编译出可执行文件:
+只要安装了srpc和workflow，linux下即可通过以下命令编译出可执行文件：
 
 ```sh
-g++ -o server server.cc example.pb.cc -std=c++11 -lsrpc
+g++ -o server server.pb_skeleton.cc example.pb.cc -std=c++11 -lsrpc
 ```
 
 接下来是激动人心的时刻了，我们用人手一个的``curl``来发起一个HTTP请求：
+
 ```
-curl 127.0.0.1:80/Example/Echo -H 'Content-Type: application/json' -d '{message:"Hello World"}'
+curl -i 127.0.0.1:80/Example/Echo -H 'Content-Type: application/json' -d '{message:"Hello World"}'
 ```
 
-通过这篇文章，相信我们可以清晰地了解到RPC是什么接口长什么样，也可以通过与HTTP协议互通来理解协议层次，更重要的是可以知道具体纵向的每个层次及横向对比我们常见的每种使用模式都有哪些。如果小伙伴对更多功能感兴趣，也可以通过阅读SRPC源码进行进一步了解。
+<img src="https://raw.githubusercontent.com/wiki/holmes1412/srpc/srpc_http_server.png" />
 
+通过这篇文章，相信我们可以清晰地了解到RPC的接口长什么样，也可以通过与HTTP协议互通来理解协议层次，更重要的是可以知道具体纵向的每个层次及横向对比我们常见的每种使用模式都有哪些。如果小伙伴对更多功能感兴趣，也可以通过阅读SRPC源码进行进一步了解。
