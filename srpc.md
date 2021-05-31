@@ -90,7 +90,7 @@ message EchoResponse
     optional string message = 1;
 };
 
-service ExamplePB
+service Example
 {
     rpc Echo(EchoRequest) returns (EchoResponse);
 };
