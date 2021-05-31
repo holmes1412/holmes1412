@@ -78,16 +78,16 @@ int main()
 我们一直在说生成代码，到底有什么用呢？图中可以得知，生成代码是衔接用户调用接口和框架代码的桥梁，这里以一个最简单的protobuf自定义协议为例：``example.proto``
 
 ```cpp
-syntax = "proto2"; // 这里proto2和proto3都可以
+syntax = "proto3"; // 这里proto2和proto3都可以
 
 message EchoRequest
 {
-    optional string message = 1;
+    string message = 1;
 };
 
 message EchoResponse
 {
-    optional string message = 1;
+    string message = 1;
 };
 
 service Example
