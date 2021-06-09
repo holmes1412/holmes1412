@@ -6,7 +6,7 @@
 
 - 简单易上手，无依赖（适合初学者）
 - 性能和稳定性优异
-- 丰富的通用协议实现：HTTP、Redis、MySQL、Kafka等
+- 丰富的通用协议实现：HTTP、Redis、MySQL、Kafka、WebSocket等
 - 统一计算、网络、文件IO等异步资源
 - 任务流管理（串行、并行、DAG）
 - 一致的解决方案形成一套完备的编程范式
