@@ -4,12 +4,11 @@
 
 **HTTP**协议，是全互联网共同的语言，而**Http Client**，可以说是我们需要从互联网世界获取数据的最基本方法，它本质上是一个**URL**到一个**网页**的转换过程。而有了基本的Http客户端功能，再搭配上我们想要的规则和策略，上至内容检索下至数据分析都可以实现了。
 
-继上一次介绍用**Workflow**可以10行C++代码写一个服务器，今天继续给大家用C++代码来实现一个高性能的Http客户端！！！
+继上一次介绍用**Workflow**可以[10行C++代码实现一个高性能Http服务器](https://xie.infoq.cn/article/0857c56574f5a40dd67de887e)，今天继续给大家用C++代码来实现一个高性能的Http客户端！！！
 
 ```cpp
 //[http_client.cc]
 #include "stdio.h"
-#include "unistd.h"
 #include "workflow/HttpMessage.h"
 #include "workflow/WFTaskFactory.h"
 
@@ -24,15 +23,15 @@ int main (int argc, char *argv[])
                         task->get_resp()->get_reason_phrase());
     });
     task->start();
-    pause();
+    getchar(); // press "Enter" to end.
     return 0;
 }
 ```
-只要安装好了workflow，以上代码即可以通过以下命令编译出一个简单的http_client：
+只要安装好了Workflow，以上代码即可以通过以下命令编译出一个简单的http_client：
 ```sh
 g++ -o http_client http_client.cc --std=c++11 -lworkflow -lssl -lcrypto -lpthread
 ```
-根据http协议，我们执行这个可执行程序``./http_client``，就会得到以下内容：
+根据Http协议，我们执行这个可执行程序``./http_client``，就会得到以下内容：
 ```sh
 HTTP/1.1 200 OK
 ```
@@ -44,30 +43,30 @@ HTTP/1.1 200 OK
 
 #### 1. 创建Http任务
 
-上述demo可以看到，我们的抓取是通过Workflow的一个Http异步任务来实现的，创建任务的接口如下：
+上述demo可以看到，请求是通过发起一个**Workflow**的Http异步任务来实现的，创建任务的接口如下：
 ```cpp
 WFHttpTask *create_http_task(const std::string& url,
                              int redirect_max, int retry_max,
                              http_callback_t callback);
 ```
-第一个参数就是我们要请求的**URL**。对应的，在一开始的示例中，我们的重定向次数**redirect_max**是2次，而重试次数**retry_max**是3次。第四个参数是一个回调函数，示例中我们用了一个lambda，由于Workflow的任务都是异步的，因此我们处理结果这件事情是被动通知我们的，结果回来就会调起这个回调函数，格式如下：
+第一个参数就是我们要请求的**URL**。对应的，在一开始的示例中，我们的重定向次数**redirect_max**是2次，而重试次数**retry_max**是3次。第四个参数是一个回调函数，示例中我们用了一个lambda，由于**Workflow**的任务都是异步的，因此我们处理结果这件事情是被动通知我们的，结果回来就会调起这个回调函数，格式如下：
 ```cpp
 using http_callback_t = std::function<void (WFHttpTask *)>;
 ```
 
 #### 2. 填写header并发出
 
-我们的网络交互无非是**请求-回复**，对应到**Http Client**上，在我们创建好了task之后，我们有一些时机是处理**请求**的，在``HTTP``协议里，就是在header里填好协议相关的事情，比如我们可以通过Connection来指定希望得到建立``HTTP``的**长连接**，以节省下次建立连接的耗时，那么我们可以把**Connection**设置为**Keep-Alive**。示例如下：
+我们的网络交互无非是**请求-回复**，对应到**Http Client**上，在我们创建好了task之后，我们有一些时机是处理**请求**的，在Http协议里，就是在header里填好协议相关的事情，比如我们可以通过Connection来指定希望得到建立Http的**长连接**，以节省下次建立连接的耗时，那么我们可以把**Connection**设置为**Keep-Alive**。示例如下：
 ```cpp
 protocol::HttpRequest *req = task->get_req();
 req->add_header_pair("Connection", "Keep-Alive");
 task->start();
 ```
-最后我们会把设置好请求的任务，通过``task->start();``发出。最开始的``http_client.cc``示例中，有一个``pause();``语句，是因为我们的异步任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
+最后我们会把设置好请求的任务，通过``task->start();``发出。最开始的``http_client.cc``示例中，有一个``getchar();``语句，是因为我们的异步任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
 
 #### 3. 处理返回结果
 
-一个返回结果，根据``HTTP``协议，会包含三部分：**消息行**、**消息头header**、**消息正文body**。如果我们想要获取body，可以这样：
+一个返回结果，根据Http协议，会包含三部分：**消息行**、**消息头header**、**消息正文body**。如果我们想要获取body，可以这样：
 ```cpp
 const void *body;
 size_t body_len;
@@ -111,4 +110,4 @@ task->get_resp()->get_parsed_body(&body, &body_len);
 3. **Http Client**遇到**redirect**可以自动帮我做跳转，一步到位请求到最终结果；
 4. 希望通过**proxy**抓取``HTTP``与``HTTPS``资源；
 
-以上这些需求，要求框架对于抓取任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如此快速就能实现一个功能丰富的高性能**Http Client**，赶紧点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)尝试一下吧！
+以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如此快速就能实现一个功能丰富的高性能**Http Client**，赶紧点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)尝试一下吧！
