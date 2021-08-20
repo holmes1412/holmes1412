@@ -1,10 +1,10 @@
-# 用C++写Http Client竟如此丝滑！
+# 高性能C++ Http Client原理详解
 
 ### 一、什么是Http Client
 
-**HTTP**协议，是全互联网共同的语言，而**Http Client**，可以说是我们需要从互联网世界获取数据的最基本方法，它本质上是一个**URL**到一个**网页**的转换过程。而有了基本的Http客户端功能，再搭配上我们想要的规则和策略，上至内容检索下至数据分析都可以实现了。
+**Http**协议，是全互联网共同的语言，而**Http Client**，可以说是我们需要从互联网世界获取数据的最基本方法，它本质上是一个**URL**到一个**网页**的转换过程。而有了基本的Http客户端功能，再搭配上我们想要的规则和策略，上至内容检索下至数据分析都可以实现了。
 
-继上一次介绍用**Workflow**可以[10行C++代码实现一个高性能Http服务器](https://xie.infoq.cn/article/0857c56574f5a40dd67de887e)，今天继续给大家用C++代码来实现一个高性能的Http客户端！！！
+继上一次介绍用**Workflow**可以[10行C++代码实现一个高性能Http服务器](https://xie.infoq.cn/article/0857c56574f5a40dd67de887e)，今天继续给大家用C++实现一个高性能的Http客户端也同样很简单！
 
 ```cpp
 //[http_client.cc]
@@ -35,7 +35,7 @@ g++ -o http_client http_client.cc --std=c++11 -lworkflow -lssl -lcrypto -lpthrea
 ```sh
 HTTP/1.1 200 OK
 ```
-同理，我们还可以通过其他api来获得抓取回来的其他Http header和Http body，一切内容都在这个``WFHttpTask``中。而因为**Workflow**是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，外加内部自带的连接服用，从根本上保证了我们的**Http Client**的高性能。
+同理，我们还可以通过其他api来获得返回的其他Http header和Http body，一切内容都在这个``WFHttpTask``中。而因为**Workflow**是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，外加内部自带的连接复用，从根本上保证了我们的**Http Client**的高性能。
 
 接下来给大家详细讲解一下原理～
 
@@ -73,7 +73,7 @@ size_t body_len;
 task->get_resp()->get_parsed_body(&body, &body_len); 
 ```
 
-### 三、高性能的保证
+### 三、高性能的基本保证
 
 我们使用C++来写**Http Client**，最香的就是可以利用其高性能。**Workflow**对高并发是如何保证的呢？其实就两点：
 - 纯异步；
@@ -108,6 +108,6 @@ task->get_resp()->get_parsed_body(&body, &body_len);
 1. **并行**地请求多个URL，并且在全部结果返回后做一些分析；
 2. **按顺序**或者按指定速度请求某个站点的内容，避免请求过猛被封禁；
 3. **Http Client**遇到**redirect**可以自动帮我做跳转，一步到位请求到最终结果；
-4. 希望通过**proxy**抓取``HTTP``与``HTTPS``资源；
+4. 希望通过**proxy**代理访问``HTTP``与``HTTPS``资源；
 
-以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如此快速就能实现一个功能丰富的高性能**Http Client**，赶紧点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)尝试一下吧！
+以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如果对如此快速就能实现一个功能丰富的高性能**Http Client**感兴趣，或者希望了解更多功能的实现原理，欢迎点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)进一步查看并尝试！
