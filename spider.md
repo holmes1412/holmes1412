@@ -110,4 +110,5 @@ task->get_resp()->get_parsed_body(&body, &body_len);
 3. **Http Client**遇到**redirect**可以自动帮我做跳转，一步到位请求到最终结果；
 4. 希望通过**proxy**代理访问``HTTP``与``HTTPS``资源；
 
-以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如果对如此快速就能实现一个功能丰富的高性能**Http Client**感兴趣，或者希望了解更多功能的实现原理，欢迎点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)进一步查看并尝试！
+以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如果对如此快速就能实现一个功能丰富的高性能**Http Client**感兴趣，或者希望了解更多功能的实现原理，欢迎点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)(或[https://gitee.com/sogou/workflow](https://gitee.com/sogou/workflow))进一步查看并尝试！
+
