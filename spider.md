@@ -31,11 +31,11 @@ int main (int argc, char *argv[])
 ```sh
 g++ -o http_client http_client.cc --std=c++11 -lworkflow -lssl -lcrypto -lpthread
 ```
-根据Http协议，我们执行这个可执行程序``./http_client``，就会得到以下内容：
+根据Http协议，我们执行这个可执行程序`./http_client`，就会得到以下内容：
 ```sh
 HTTP/1.1 200 OK
 ```
-同理，我们还可以通过其他api来获得返回的其他Http header和Http body，一切内容都在这个``WFHttpTask``中。而因为**Workflow**是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，外加内部自带的连接复用，从根本上保证了我们的**Http Client**的高性能。
+同理，我们还可以通过其他api来获得返回的其他Http header和Http body，一切内容都在这个`WFHttpTask`中。而因为**Workflow**是个异步调度框架，因此这个任务发出之后，不会阻塞当前线程，外加内部自带的连接复用，从根本上保证了我们的**Http Client**的高性能。
 
 接下来给大家详细讲解一下原理～
 
@@ -62,7 +62,7 @@ protocol::HttpRequest *req = task->get_req();
 req->add_header_pair("Connection", "Keep-Alive");
 task->start();
 ```
-最后我们会把设置好请求的任务，通过``task->start();``发出。最开始的``http_client.cc``示例中，有一个``getchar();``语句，是因为我们的异步任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
+最后我们会把设置好请求的任务，通过`task->start();`发出。最开始的`http_client.cc`示例中，有一个`getchar();`语句，是因为我们的异步任务发出后是非阻塞的，当前线程不暂时停住就会退出，而我们希望等到回调函数回来，因此我们可以用多种暂停的方式。
 
 #### 3. 处理返回结果
 
@@ -105,10 +105,10 @@ task->get_resp()->get_parsed_body(&body, &body_len);
 #### 3. 解锁其他功能
 
 当然，除了以上的高性能以外，一个高性能的**Http Client**往往还有许多其他的需求，这里可以结合实际情况与大家分享：
-1. **并行**地请求多个URL，并且在全部结果返回后做一些分析；
+1. 结合workflow的串并联任务流，实现超大规模**并行抓取**;
 2. **按顺序**或者按指定速度请求某个站点的内容，避免请求过猛被封禁；
 3. **Http Client**遇到**redirect**可以自动帮我做跳转，一步到位请求到最终结果；
-4. 希望通过**proxy**代理访问``HTTP``与``HTTPS``资源；
+4. 希望通过**proxy**代理访问`HTTP`与`HTTPS`资源；
 
 以上这些需求，要求框架对于Http任务的编排有超高的灵活性，以及对实际需求（比如redirect、ssl代理等功能）有非常接地气的支持，这些**Workflow**都已经实现。如果对如此快速就能实现一个功能丰富的高性能**Http Client**感兴趣，或者希望了解更多功能的实现原理，欢迎点击链接[https://github.com/sogou/workflow](https://github.com/sogou/workflow)(或[https://gitee.com/sogou/workflow](https://gitee.com/sogou/workflow))进一步查看并尝试！
 
