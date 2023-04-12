@@ -23,15 +23,16 @@ dispatch()的时候会在锁里抢sending。
 ### 3、多层channel的派生及成员
 
 
-=== WFComplexChannel<MSG> 
+`WFComplexChannel<MSG>`
+
 有mutex、condition、sending
 
+`WFChannel<MSG>`
 
-=== WFChannel<MSG>
 有callback、process
 
+`ChanRequest`
 
-=== ChanRequest
 有state、error、established（1:yes; 0:no; ）、object、target
 
 
@@ -42,6 +43,7 @@ dispatch()的时候会在锁里抢sending。
   
 不会。由于delete是在deinit的series的callback中，我们下面分析deinit() 先抢到sending、handle_terminate() 在等的情况。
 
+~~~
 [ client.deinit() ]                       [ handle_terminate() ]          sending     established
             ｜                                     | 
             v                                      |                       false         1
@@ -83,4 +85,4 @@ signal()完后 <—————————————————————�
 解锁
 调用WFChannel的callback
 delete this。
-
+~~~
