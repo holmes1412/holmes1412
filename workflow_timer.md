@@ -1,10 +1,11 @@
 # 《 C++高并发异步定时器的实现 - Workflow架构系列 》 
 
-对于C++高并发场景，定时问题处理起来有三大难题：高效、精准、原子性。除了定时任务随时可能**到期**、而进程随时可能要**退出**之外，最近Workflow甚至为定时任务增加了**取消**功能，导致任务可能被框架调起之前被用户取消，或者创建之后不想执行直接删除等情况，而这些情况大部分来说都是**由不同线程执行**的，因此其中的并发处理可谓教科书级别！
+各位开发者好，久违的Workflow架构系列追更了～
+在C++高并发场景，定时功能的实现有三大难题：高效、精准、原子性。
+除了定时任务随时可能到期、而进程随时可能要退出之外，最近Workflow甚至为定时任务增加了取消功能，导致任务可能被框架调起之前被用户取消，或者创建之后不想执行直接删除等情况，而这些情况大部分来说都是由不同线程执行的，因此其中的并发处理可谓教科书级别！
+那么就和大家一起看看Workflow在定时器的设计上做了哪些考虑，深扒细节，体验并发架构之美～
 
-以下和大家一起看看Workflow在定时器的设计上做了哪些考虑，深扒细节，体验并发架构之美。
-
-https://github.com/sogou/workflow
+[https://github.com/sogou/workflow](https://github.com/sogou/workflow)
 
 ## 1. 高效的数据结构与timerfd
 
@@ -12,72 +13,54 @@ https://github.com/sogou/workflow
 
 聪明的读者肯定知道，在server的执行函数中用**sleep(1)**是不行的，`sleep()`这个系统调用是会阻塞当前线程的，而异步编程里阻塞线程是高效的大忌！
 
-所以我们可以使用[`timerfd`]((https://man7.org/linux/man-pages/man2/timerfd_create.2.html))，顾名思义就是用特定的fd来通知定时事件，把定时时机响应和网络事件响应都一起处理，用epoll管理就是一把梭。
+所以我们可以使用[`timerfd`](https://man7.org/linux/man-pages/man2/timerfd_create.2.html)，顾名思义就是用特定的fd来通知定时事件，把定时时机响应和网络事件响应都一起处理，用epoll管理就是一把梭。
 
-现在离高效还差一丢丢。回到例子，我们不可能每次收到一个请求都创建一个timerfd，因为高并发场景下一个server通常要抗上百万的QPS，目前Workflow的超时算法做法是一个poller一个timerfd，内部利用了链表+红黑树的数据结构，时间复杂度在O(1)和O(logn)之间，其中n为poller线程的fd数量。
+现在离高效还差一点。回到例子，我们不可能每次收到一个请求都创建一个timerfd，因为高并发场景下一个server通常要抗上百万的QPS。
 
-/* 并且超时处理目前看不是瓶颈所在，因为Linux内核epoll相关调用也是O(logn)时间复杂度，我们把超时都做到O(1)也区别不大。 */这个数据结构的组合还是比较有意思的，但我们先专注解决生效两个问题。
+目前Workflow的超时算法做法是：一个poller一个timerfd，内部利用了**链表+红黑树**的数据结构，时间复杂度在O(1)和O(logn)之间，其中n为poller线程的fd数量。
+
 
 // wokrflow_timer_1.png
+[Workflow定时器管理：高效的数据结构与poller_add_timer()]
 
 ## 2. 精准的响应
 
-于是上述定时问题就变成了：每收到一个请求就发起一个异步任务，在timeout之后可以通过callback通知我们，再作回复。
+这样的数据结构设计有什么好处呢？
+- 写得快（放入一个新节点）
+- 读得快（响应已超时的节点）
+- 精度高（超时时间无精度损失）
 
-Workflow源码在kernel和factory中都有对应的实现，kernel层是主要负责timerfd的地方，当前factory层还比较薄。我们重点看看上述数据结构：`src/kernel/poller.c`。
+Workflow源码在kernel和factory目录中都有对应的实现，kernel层是主要负责timerfd的地方，当前factory层还比较薄。我们重点看看上述数据结构。
 
-由用户发起异步任务，将这个任务加到上述的链表+红黑树的数据结构中，如果这个超时是当前最小的过期时间，还会更新一下timerfd。
+由用户发起异步任务，将这个任务加到上述的链表+红黑树的数据结构中，如果这个超时是当前最小的超时时间，还会更新一下timerfd。
 
-//////// 这里代码可以不用了 /////////
-```cpp
-int poller_add_timer(const struct timespec *value, void *context, poller_t *poller)                                          
-{
-    ...
+框架的网络线程每次会从epoll拿出事件，如果响应到超时事件，会把数据结构中已经超时的全部节点都拿出来，并调用任务的handle。
 
-    // 1. 分配内部用于poller内部管理的上下文
-    node = (struct __poller_node *)malloc(sizeof (struct __poller_node));
-    if (node)
-    {
-        // 2. 设置节点的值，对于定时任务，这个标志位【removed】后续会发挥关键作用
-        node->data.operation = PD_OP_TIMER;
-        node->removed = 0;
-                                  
-        // 3. 把超时设置上
-        node->timeout.tv_sec += value->tv_sec;                                  
-        node->timeout.tv_nsec += value->tv_nsec;
-
-        // 4. 在锁内把节点加到上述数据结构中
-        pthread_mutex_lock(&poller->mutex);                                     
-        __poller_insert_node(node, poller);
-        pthread_mutex_unlock(&poller->mutex);                                   
-        return 0;                                                               
-    }
-    return -1;
-} 
-```
-//////////////////
-
-由框架的网络线程响应到超时，把数据结构中已经超时的全部节点都拿出来，调用任务的handle：
+以下是从epoll处理超时事件的关键函数：
 
 ```cpp
-/*** poller响应timerfd的到时事件，并处理所有到时的定时任务，当前在网络线程 ***/
+/*** poller响应timerfd的到时事件，并处理所有到时的定时任务 ***/
 static void __poller_handle_timeout(const struct __poller_node *time_node, poller_t *poller)                           
 {                                                                               
     ...
 
-    // 1. 锁里，把list与rbtree上时间已到的节点都从数据结构里删除，临时放到一个局部变量上                                        
+    // 锁里，把list与rbtree上时间已到的节点都从数据结构里删除，临时放到一个局部变量上                                        
     list_for_each_safe(pos, tmp, &poller->timeo_list)                           
-    { ... }
+    {
+       ...
+       node->removed = 1; // 标志位：【removed】
+       ...
+    }
 
     if (poller->tree_first)                                                     
     { ... }  
 
-    // 2. 锁外，设置state和error，并回调Task的handle()函数
+    // 锁外，设置state和error，并回调Task的handle()函数
     while (!list_empty(&timeo_list))                                            
     {                                                                           
         node = list_entry(timeo_list.next, struct __poller_node, list);         
         list_del(&node->list);                                                  
-                                                                                
+
         node->error = ETIMEDOUT;                                                
         node->state = PR_ST_ERROR;                                              
         free(node->res);                                                        
@@ -86,43 +69,24 @@ static void __poller_handle_timeout(const struct __poller_node *time_node, polle
 } 
 ```
 
-由于timerfd使用的超时时间是所有节点中最早超时的时间，而所有节点都在rbtree和list上按序排好，我们从前到后找的都是已超时的节点。因此利用了timerfd的精准性可以非常准确地叫醒当前已经超时的全部节点。由于实际使用中，用户使用的超时时长总是固定的，比如上述例子都是1s，因此超时的绝对时间一般来说都是递增的，这个数据结构的设计可以很好地满足定时器的需求。
+由于timerfd使用的超时时间是所有节点中最早超时的时间，而所有节点都在rbtree和list上按序排好，我们从前到后找的都是已超时的节点。因此利用了timerfd的精准性可以非常准确地叫醒当前已经超时的全部节点，无精度损失。
+
+由于实际使用中，用户使用的超时时长总是倾向于固定的，比如上述例子都是1s，因此超时的绝对时间一般来说都是递增的，使用这个数据结构写入会非常快，设计特别适合定时器的实际需求。
 
 ## 3. 原子性
 
-上述有提到，用户的回调需要调且只调一次，和**timeout**竞争的是**stop**，其实现逻辑与`poller_handle_timeout()`逻辑非常类似：用锁来互斥，抢到锁从相关数据结构里把节点拿出来，谁抢到谁调回调。
-
-```cpp
-/*** 进程退出，需要立刻打断所有定时任务 ***/
-void poller_stop(poller_t *poller)
-{
-    ...
-    poller->stopped = 1; // 1. 全局置标志位【stopped】，这个是重点，它是在锁外设置的
-
-    // 2. 锁内，把rbtree里的每个节点拿下，统一在list中挨个处理
-    list_for_each(pos, &node_list)
-    {
-        node = list_entry(pos, struct __poller_node, list);
-        if (node->data.fd >= 0)     
-        { ... }
-        else
-            node->removed = 1; // 标志位【removed】，下一部分会用到
-    }
-
-    ...
-    // 3. 与timeout流程类似，挨个节点设置state和error，并回调
-}
-```
+上述有提到，用户的回调需要调且只调一次，Workflow可以保证在进程退出时立刻全部立刻到时结束。进程退出又是另一个话题，感兴趣的读者先自行去看代码，回头再细说～
 
 ## 4.允许取消（新功能）
 
-看到这里，会发现定时器的基本功能实现也不难，它甚至可以轻松地在进程退出时立刻全部到时结束。
+看到这里，已经可以感受到优雅的数据结构如何实现高效精准的定时器了～
 
 但是当我们打开poller.h，感受一下它的接口，总觉得差了点什么：
 
 // workflow_timer_2.png
 
 是的！一个timer可以add，但是却不可以delete！
+[孤独的api：poller_add_timer( )]
 
 Workflow中许多结构的实现都是非常完备和对称的，因此**取消一个定时任务**这件事在Workflow开源的第一天就一直想要实现。
 
@@ -130,7 +94,9 @@ Workflow中许多结构的实现都是非常完备和对称的，因此**取消�
 
 最近终于找到了一个非常好的解决办法：**使用命名timer，交给全局map管，cancel的时候带名字去操作，就可以解决生命周期问题**。
 
-我们增加了带名字的Timer ：`__WFNamedTimerTask`，通过全局的map可以找到它，从而进行删除。删除实际上就是从poller中删除一个timer。所以从底向上先增加这个接口：
+我们增加了带名字的Timer ：`__WFNamedTimerTask`，通过全局的map可以找到它，从而进行删除。删除实际上就是从poller中删除一个timer。
+
+所以从底向上先，为孤独的poller_add_time增加一个小伙伴：poller_del_timer。
 
 ```cpp
 /*** 取消一个定时任务时，从poller删除它 ***/
@@ -146,11 +112,15 @@ int poller_del_timer(void *timer, poller_t *poller)
             __poller_tree_erase(node, poller);
         else
             list_del(&node->list);
-        ...
+        node->error = 0;                                                        
+        node->state = PR_ST_DELETED;                                                
+        stopped = poller->stopped;                                                  
+        if (!stopped) // 标志位【stopped】，如果当时没有进程退出，把timer事件交出去处理
+            write(poller->pipe_wr, &node, sizeof (void *));
     }
     ...
 
-    // 锁外：标志位【stopped】可以保证cancel与stop调用回调的原子性：调且只调一次
+    // 锁外：标志位【stopped】如果进程要退出了，立刻处理timer事件的handle
     if (stopped)
         poller->cb((struct poller_result *)node, poller->ctx);
 
@@ -161,21 +131,23 @@ int poller_del_timer(void *timer, poller_t *poller)
 刚才讲述过的**timeout**（时间到）、**stop**（进程退出）、**cancel**（用户取消）三者可能由三个线程分别发起，于是我们看到的并发状态，简单来说是这样的：
 
 // wokrflow_timer_3.png
-[现在的并发状态，timeout、stop、cancel三者可能随时发生]
+[定时器到期(timeout)、进程退出(stop)、任务取消(cancel)三者随时可能发生]
 
 ## 5. 精妙的并发状态分析
 
 cancel和另外两个行为有着本质上的不同：
-- timeout和stop的触发顺序是先poller层被叫醒、再到Task层处理，最后调用用户的callback；
-- cancel的触发是用户发起删除、Task层的命名map中先删掉它、再从poller里的数据结构中删掉，最后让Task的handle调用用户的callback；
+- timeout和stop的触发顺序是先poller层、再到Task层，最后到用户的callbback;
+- cancel的触发先Task层Task层的命名map中先删掉它触发、再到poller层，最后到用户的callback;
 
-因此先讨论第一类情况。上述流程中三个事件，假如**timeout**或者**stop**先发生。我们以**timeout**为例：
+因此先讨论第一类情况。
 
-1. poller层面的`__poller_handle_timeout()`会把上述的**removed**标志位用上，与`poller_del_timer()`互斥：谁第一个抢到**removed**标志位并置为1，就代表了timer结束于哪个状态。如果是timeout，那么用户拿到的state为SS_STATE_COMPLETE，如果是stop则用户会拿到SS_STATE_DISRUPTED；
+我们以timeout为例：
+
+1. poller层面的`__poller_handle_timeout()`会把上述的**removed**标志位用上，与`poller_del_timer()`互斥：谁第一个抢到**removed**标志位并置为1，就代表了timer结束于哪个状态。如果是timeout，那么用户拿到的state为SS_STATE_COMPLETE;
 2. 互斥锁`poller->mutex`保证从poller的数据结构中删掉这个节点并调Task层回调，从而可以保证**stop**的时候无需重复处理它；
 3. timeout调用的Task层回调，实际上是__WFNamedTimerTask::handle()：
-(1)它会置一个标志位node_.task，表示此任务已经处理过；
-(2)并且把这个节点从全局map中删除：这样就保证了用户不会**cancel**到它了；
+(1) 它会置一个标志位node_.task，表示此任务已经处理过；
+(2) 并且把这个节点从全局map中删除：这样就保证了用户自顶向下cancel就不会删到它了；
 
 ```cpp
 /*** 处理定时器到期，由poller调用 ***/
@@ -199,11 +171,10 @@ void __WFNamedTimerTask::handle(int state, int error)
 
 第二类情况，如果用户调用**cancel**先发生呢？
 
-1. 刚才提到，poller层面的`poller_del_timer()`会先置上`removed`，并从定时器数据结构中删掉，这样就不会被**stop**流程再去处理了；
-2. 当然如果同一时间发生了**stop**，当前**cancel**流程已经把节点从poller的数据结构里删了，则还需要负责去调用一下Task的回调；
-3. 在Task层面，需要由**cancel**流程负责调用用户的callback()，同时回收timer的资源；
+1. 自顶向下先由factory层找到这个节点，再调到poller的`poller_del_timer()`。期间需要记录一些状态，因为我们需要通常有多个poller。然后内部会先置上`removed`，并从定时器数据结构中删掉，以保证和timeout流程互斥；
+2. 在Task层面，需要由**cancel**流程负责调用用户的callback()，同时回收timer的资源；
 
-// 可以加一个图。。。
+// workflow_timeout_4.png
 
 ```cpp
 void __NamedTimerMap::cancel(const std::string& name, size_t max)               
@@ -239,9 +210,7 @@ void __NamedTimerMap::cancel(const std::string& name, size_t max)
 
 ### 6. 异步任务的发起时机是个谜
 
-还是回到这张图：
-
-// wokrflow_timer_3.png
+上面那张图，我们假设的是任务先创建好，再被发起。那如果任务任务还没有被发起，甚至我们不想发起呢？
 
 我们假设的是任务先创建好，再被发起。那如果任务任务还没有被发起，甚至我们不想发起呢？
 
@@ -249,21 +218,23 @@ void __NamedTimerMap::cancel(const std::string& name, size_t max)
 
 实际上我们把一个timer放到一个任务流图中，我们并不能确定它被发起的准确的时机，但我们依然允许先**cancel**它。
 
-// wokrflow_timer_6.png
+// wokrflow_timer_5.png
+[取消(cancel)可以在发起(dispatch)之前]
 
-这时候我们就需要上述的标志位`exchange`来做互斥了。`exchange`是个`std::atomic<tool>`，初始化为**false**，用户已经手动**cancel**过之后，任务可能在任务流中才会被发起**dispatch**。因此必须保证**dispatch**过才能释放这个timer的资源：
+这时候我们就需要上述的标志位`exchange`来做互斥了。`exchange`是个`std::atomic<tool>`，初始化为**false**，用户已经手动**cancel**过之后，任务可能在任务流中才会被发起**dispatch**。
+因此即使先取消，没关系，但必须保证**dispatch**过才能释放这个timer的资源：
 
 ```cpp
 /*** 由任务流发起、或者用户手动start起来 ***/
 void __WFNamedTimerTask::dispatch()
 {    
     int ret;    
-    
+
     mutex_.lock();    
     ret = this->scheduler->sleep(this); // 先把定时任务交给poller
     if (ret >= 0 && flag_.exchange(true)) // exchange一下。如果是第二个调用exchange的人，会拿到true
         this->cancel(); // 说明发起之前已经有人cancel过了，立刻从poller中删除即可
-    
+
     mutex_.unlock();    
     if (ret < 0)    
         this->handle(SS_STATE_ERROR, errno);
