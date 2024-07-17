@@ -20,9 +20,11 @@ https://github.com/sogou/workflow
 2. 资源不是无限的，执行P如果n减到要小于0了，说明资源不够，那你就等着；
 3. 执行V把资源归还，意味着有人在等的时候，你可以叫醒这个人；
 
-这个抽象的语义，具体到每个系统中的实现是不一样的。即使裸写C的小伙伴也很少会直接用操作系统的信号量，是因为我们都会用到更高级的封装。
+这个抽象的语义，具体到每个系统中的实现是不一样的。
 
 虽然Workflow构思资源池的时候并不是奔着实现信号量的语义去做的，但是基于任务流的语义想要解决并发控制的问题时，会发现与信号量的概念殊途同归。
+
+![How WFResourcePool Works](https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/workflow_resource_pool_1.1.png)
 
 ## 二、资源池ResourcePool
 
@@ -81,9 +83,13 @@ task->start();
 SeriesWork *series; // 假设这一个现成的任务流。一般来自于我们自己创建，或者其他任务的callback中拿到
 series->push_back(task);
 ```
-在Workflow的实现中，它们的调度都不会卡住任何线程。那么，现在加了一个资源池的约束，也就意味着：一个任务的发起，应当是'**当前流程允许执行**'并且'**从资源池中拿到资格**'才能真正得到调度。
+在Workflow的实现中，它们的调度都不会卡住任何线程。
+
+那么，现在加了一个资源池的约束，也就意味着：一个任务的发起，应当是'**当前流程允许执行**'并且'**从资源池中拿到资格**'才能真正得到调度。
 
 **WFConditional条件任务**就是这个中间层：我们通过get()接口，把任务是否能通过资源池获得资格这个工作，交给了WFConditional，而WFConditional替代了这个任务本身被start或者放到任务流中。
+
+![How WFConditional Takes Over Asynchronous Tasks](https://raw.githubusercontent.com/wiki/holmes1412/holmes1412/workflow_resource_pool_2.png)
 
 用一个并发为1的小spider，展示一下常用的使用方式：
 
@@ -99,9 +105,9 @@ WFConditional *c = pool.get(t, &t->user_data);  // 用user_data来保存res是�
 // 3. 接下来用这个条件任务，替代http任务去和任务流结合
 c->start(); // or series->push_back(c);
 ```
-## 4. 更多...
+## 四、更多...
 
-回到刚开始的场景，可以参考这个issue，这个也是内部用户咨询得最多的需求之一：《如何根据用户配置去限制server的qps》https://github.com/sogou/workflow/issues/1319
+回到刚开始的场景，可以参考这个issue，这个也是内部用户咨询得最多的需求之一：《如何根据用户配置去限制server的qps》，🔗 https://github.com/sogou/workflow/issues/1319
 
 当然我们实现一个server的时候，实际上是要控制用户请求的并发而非QPS，因为QPS是由资源处理能力附加了时间维度而得出的，核心指标应该是同时能处理的并发数。
 
